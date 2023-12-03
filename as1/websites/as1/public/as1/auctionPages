@@ -1,0 +1,139 @@
+<?php
+require 'Header.php';
+require 'dbConn.php'
+
+$auctionIDFromURL = $_GET['id'];
+
+$productDetailsQuery = $pdo->prepare("SELECT * FROM `auctions` WHERE auction_id = :auctionID");
+$productDetailsQuery->bindParam(':auctionID', $auctionIDFromURL);
+$productDetailsQuery->execute();
+$auctionDetails = $productDetailsQuery->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($auctionDetails as $auction) {
+    $categoryID = $auction['category_id'];
+    $uploaderID = $auction['register_id'];
+
+    $uploaderNameQuery = $pdo->prepare("SELECT name FROM `registers` WHERE register_id = :uploaderID");
+    $uploaderNameQuery->bindParam(':uploaderID', $uploaderID);
+    $uploaderNameQuery->execute();
+    $uploaderDetails = $uploaderNameQuery->fetch(PDO::FETCH_ASSOC);
+    $uploaderName = $uploaderDetails['name'];
+
+    $productName = $auction['title'];
+
+    $categoryNameQuery = $pdo->prepare("SELECT name FROM `categories` WHERE category_id = :categoryID");
+    $categoryNameQuery->bindParam(':categoryID', $categoryID);
+    $categoryNameQuery->execute();
+    $categoryDetails = $categoryNameQuery->fetch(PDO::FETCH_ASSOC);
+    $productCategory = $categoryDetails['name'];
+
+    $productDescription = $auction['description'];
+    $auctionEndDate = $auction['endDate'];
+    $auctionEndDateTime = new DateTime($auctionEndDate);
+}
+
+$highestBidQuery = $pdo->prepare("SELECT MAX(bid) as maxBid FROM `bids` WHERE auction_id = :auctionID");
+$highestBidQuery->bindParam(':auctionID', $auctionIDFromURL);
+$highestBidQuery->execute();
+$highestBidData = $highestBidQuery->fetch(PDO::FETCH_ASSOC);
+$highestBidAmount = ($highestBidData['maxBid'] !== null) ? intval($highestBidData['maxBid']) : 0;
+?>
+
+<main>
+    <h1>Product Page</h1>
+    <article class="product">
+        <img src="product.png" alt="product name">
+        <section class="details">
+            <h2><?= $productName ?></h2>
+            <h3><?= $productCategory ?></h3>
+            <p>Auction created by <a href="#"><?= $uploaderName ?></a></p>
+            <p class="price"><?= 'Current bid: £' . $highestBidAmount ?></p>
+            <time><?= $currentDateTime = new DateTime(); $timeDifference = $currentDateTime->diff($auctionEndDateTime); echo($timeDifference->format('%d day %H hour %i minute') . ' remaining'); ?></time>
+            <form class="bid" action="#" method="POST">
+                <input type="text" name="bidAmount" placeholder="Enter your amount" />
+                <input type="submit" name="submitBid" value="Place bid" />
+            </form>
+        </section>
+        <section class="description">
+            <p><?= $productDescription ?></p>
+        </section>
+        <section class="reviews">
+            <h2>Reviews of <?= $uploaderName ?></h2>
+            <ul>
+                <?php
+                $reviewsQuery = $pdo->prepare("SELECT * FROM `reviews` WHERE auction_id = :auctionID");
+                $reviewsQuery->bindParam(':auctionID', $auctionIDFromURL);
+                $reviewsQuery->execute();
+                $reviewDetails = $reviewsQuery->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($reviewDetails as $review) {
+                    $reviewerID = $review['register_id'];
+                    $reviewText = $review['writeReview'];
+                    $reviewDate = $review['date'];
+
+                    $reviewerNameQuery = $pdo->prepare("SELECT name FROM `registers` WHERE register_id  = :reviewerID");
+                    $reviewerNameQuery->bindParam(':reviewerID', $reviewerID);
+                    $reviewerNameQuery->execute();
+                    $reviewerDetails = $reviewerNameQuery->fetch(PDO::FETCH_ASSOC);
+                    $reviewerName = $reviewerDetails['name'];
+
+                    echo '<li><strong>' . $reviewerName . ' said </strong>' . $reviewText . '<em>' . $reviewDate . '</em></li>';
+                }
+                ?>
+            </ul>
+            <form action="#" method="POST">
+                <label>Add your review</label> <textarea name="userReview" required></textarea>
+                <input type="submit" name="submitReview" value="Add Review">
+            </form>
+        </section>
+    </article>
+    <?php
+    require 'footer.php';
+    ?>
+</main>
+
+</body>
+</html>
+
+<?php
+if (isset($_POST['submitReview'])) {
+    if ($_SESSION['loggedin'] == true) {
+        $userEmail = $_SESSION['emailID'];
+        $currentDate = date("Y.m.d");
+        $userRegIDQuery = $pdo->prepare("SELECT register_id FROM `registers` WHERE email = :userEmail");
+        $userRegIDQuery->bindParam(':userEmail', $userEmail);
+        $userRegIDQuery->execute();
+        $userRegDetails = $userRegIDQuery->fetch(PDO::FETCH_ASSOC);
+
+        $userRegID = $userRegDetails['register_id'];
+        $userReview = $_POST['userReview'];
+
+        $insertReviewQuery = $pdo->prepare("INSERT INTO `reviews`( `writeReview`, `auction_id`, `register_id`, `date`) VALUES (:userReview, :auctionID, :userRegID, :currentDate)");
+        $insertReviewQuery->bindParam(':userReview', $userReview);
+        $insertReviewQuery->bindParam(':auctionID', $auctionIDFromURL);
+        $insertReviewQuery->bindParam(':userRegID', $userRegID);
+        $insertReviewQuery->bindParam(':currentDate', $currentDate);
+        $insertReviewQuery->execute();
+    } else {
+        echo '<script> alert("you are not logged in")</script>';
+    }
+}
+
+if (isset($_POST['submitBid'])) {
+    if ($_SESSION['loggedin'] == true) {
+        $userEmail = $_SESSION['emailID'];
+        $userRegIDQuery = $pdo->prepare("SELECT register_id FROM `registers` WHERE email = :userEmail");
+        $userRegIDQuery->bindParam(':userEmail', $userEmail);
+        $userRegIDQuery->execute();
+        $userRegDetails = $userRegIDQuery->fetch(PDO::FETCH_ASSOC);
+
+        $userRegID = $userRegDetails['register_id'];
+        $bidAmount = $_POST['bidAmount'];
+
+        $insertBidQuery = $pdo->prepare("INSERT INTO `bids`( `bid`, `auction_id`, `register_id`) VALUES (:bidAmount, :auctionID, :userRegID)");
+        $insertBidQuery->bindParam(':bidAmount', $bidAmount);
+        $insertBidQuery->bindParam(':auctionID', $auctionIDFromURL);
+        $insertBidQuery->bindParam(':userRegID', $userRegID);
+        $insertBidQuery->execute();
+    } else {
+        echo '<script> alert("you are not logged in")</script>';
